@@ -37,3 +37,54 @@ jobs:
           with:
             name: Mocha-Test-Result
             path: test-results.xml
+
+    login:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Login to Docker Hub
+          uses: docker/login-action@v4
+          with:
+            username: ${{ vars.DOCKERHUB_USERNAME }}
+            password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+        - name: Login to GitHub Container Registry
+          uses: docker/login-action@v4
+          with:
+            registry: ghcr.io
+            username: ${{ github.repository_owner }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Docker Build for testing
+          uses: docker/build-push-action@v7
+          with:
+            context: .
+            push: false
+            tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{github.sha}}     
+        
+        - name: Docker Image Testing
+          run: |
+            docker images
+            docker run --name solar-system-app -d \
+                -p 3000:3000 \
+                -e  MONGO_URI= $MONGO_URI \
+                -e  MONGO_USERNAME = $MONGO_USERNAME \
+                -e  MONGO_PASSWORD = $MONGO_PASSWORD \
+                ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+            export IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
+            echo $IP
+
+            echo Testing Image URL using wget
+            wget -q -O - 127.0.0.1:3000/live | grep live
+
+        - name: Container Registry Push
+          uses: docker/build-push-action@v7
+          with:
+            context: .
+            push: true
+            tags: | 
+              ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{github.sha}}
+              ghcr.io/${{ github.repository_owner }}/solar-system:${{github.sha}} 
+
+          
+
